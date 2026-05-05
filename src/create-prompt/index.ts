@@ -147,9 +147,15 @@ function buildSystemPromptAppend(
     `The user who triggered you is @${ctx.triggerActor}.`
   );
   parts.push(
+    `You have a tracking comment on the PR/issue that you MUST update with your results using the update_cortex_comment tool. ` +
+    `Write well-formatted markdown with clear sections, headers, and structure. ` +
+    `For code reviews, format your findings with a summary section, then detailed findings with file references. ` +
+    `Use tables, bullet points, and code blocks where appropriate. ` +
+    `Always call update_cortex_comment as your final action with your complete formatted findings.`
+  );
+  parts.push(
     `You can read files, edit code, run commands, and search the codebase. ` +
-    `When you make changes, commit them to the current branch. ` +
-    `When done, update your tracking comment with a summary of what you did.`
+    `When you make changes, commit them to the current branch.`
   );
 
   if (customSystemPrompt) {

@@ -214,21 +214,23 @@ async function run(): Promise<void> {
     });
     core.setOutput("branch_name", branchName);
 
-    // Update tracking comment with result
-    const statusEmoji = result.success ? "✅" : "❌";
-    const statusText = result.success ? "completed successfully" : "encountered an error";
-    const summaryBody = sanitizeContent(
-      `${statusEmoji} **${botName}** ${statusText}.\n\n` +
-        `**Session ID:** \`${result.sessionId}\`\n\n` +
-        `---\n\n` +
-        (result.output
-          ? `<details><summary>Output</summary>\n\n\`\`\`\n${result.output.slice(0, 60000)}\n\`\`\`\n\n</details>`
-          : "_No output captured._")
-    );
-
-    await updateTrackingComment(octokit, owner, repo, commentId, summaryBody);
+    // Update tracking comment with result (only if agent didn't already update it)
+    // The agent is instructed to call update_cortex_comment with formatted results.
+    // We only overwrite if the agent failed or didn't produce output.
+    if (!result.success) {
+      const summaryBody = sanitizeContent(
+        `❌ **${botName}** encountered an error.\n\n` +
+          `**Session ID:** \`${result.sessionId}\`\n\n` +
+          `---\n\n` +
+          (result.output
+            ? `<details><summary>Output</summary>\n\n\`\`\`\n${result.output.slice(0, 60000)}\n\`\`\`\n\n</details>`
+            : "_No output captured._")
+      );
+      await updateTrackingComment(octokit, owner, repo, commentId, summaryBody);
+    }
 
     // Write step summary
+    const statusText = result.success ? "completed successfully" : "encountered an error";
     await core.summary
       .addHeading("Cortex Code Action Results")
       .addRaw(`**Status:** ${statusText}\n\n`)
