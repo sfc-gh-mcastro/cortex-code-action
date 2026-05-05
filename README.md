@@ -58,6 +58,7 @@ jobs:
 | `system_prompt` | No | — | Additional system prompt text |
 | `branch_prefix` | No | `cortex-code/` | Prefix for branches created by the agent |
 | `max_turns` | No | — | Maximum number of agentic turns |
+| `prompt` | No | — | Direct prompt for agent mode (bypasses trigger detection) |
 
 ## Outputs
 
@@ -84,12 +85,51 @@ jobs:
 
 ## How It Works
 
+### Tag Mode (default)
 1. A user comments `@cortex-code <request>` on a PR or issue
 2. The action validates the user has write permissions
 3. Posts a tracking comment ("Working on this...")
 4. Gathers context: PR/issue metadata, comments, changed files
 5. Invokes Cortex Code via the [Agent SDK](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/cortex-code-agent-sdk) with full codebase access
 6. Updates the tracking comment with results
+
+### Agent Mode (with `prompt` input)
+When `prompt` is provided, the action runs in agent mode — it skips trigger detection and uses the prompt directly. This is ideal for automated workflows like PR reviews.
+
+## PR Review Example
+
+```yaml
+# .github/workflows/cortex-code-review.yml
+name: Cortex Code Review
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: sfc-gh-mcastro/cortex-code-action@main
+        with:
+          snowflake_account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          snowflake_user: ${{ secrets.SNOWFLAKE_USER }}
+          snowflake_private_key: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+          model: "auto"
+          max_turns: "3"
+          prompt: |
+            Review this PR for code quality, correctness, security vulnerabilities,
+            and adherence to the project's coding conventions. Post findings as a
+            comment on the PR.
+```
 
 ## Security
 

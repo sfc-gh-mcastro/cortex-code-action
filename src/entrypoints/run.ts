@@ -22,7 +22,7 @@ import {
   updateTrackingComment,
 } from "../github";
 import { fetchPRData, fetchIssueData, filterCommentsByTime } from "../github/data";
-import { createPrompt } from "../create-prompt";
+import { createPrompt, createAgentPrompt } from "../create-prompt";
 import {
   setupSnowflakeConnection,
   cleanupConnection,
@@ -56,23 +56,28 @@ async function run(): Promise<void> {
     const customSystemPrompt = process.env.INPUT_SYSTEM_PROMPT ?? "";
     const allowedToolsStr = process.env.INPUT_ALLOWED_TOOLS ?? "";
     const disallowedToolsStr = process.env.INPUT_DISALLOWED_TOOLS ?? "";
+    const directPrompt = process.env.INPUT_PROMPT ?? "";
 
-    // Validate trigger
-    if (!containsTrigger(ctx.triggerCommentBody, triggerPhrase)) {
-      core.info(
-        `Trigger phrase "${triggerPhrase}" not found in comment. Skipping.`
-      );
-      return;
-    }
+    // Determine mode: agent mode (prompt provided) vs tag mode (@cortex-code mention)
+    const isAgentMode = directPrompt.length > 0;
 
-    // Validate actor
-    if (!isHumanActor(ctx.triggerActor)) {
-      core.info(`Actor ${ctx.triggerActor} is a bot. Skipping.`);
-      return;
+    if (!isAgentMode) {
+      // Tag mode: validate trigger phrase and human actor
+      if (!containsTrigger(ctx.triggerCommentBody, triggerPhrase)) {
+        core.info(
+          `Trigger phrase "${triggerPhrase}" not found in comment. Skipping.`
+        );
+        return;
+      }
+
+      if (!isHumanActor(ctx.triggerActor)) {
+        core.info(`Actor ${ctx.triggerActor} is a bot. Skipping.`);
+        return;
+      }
     }
 
     core.info(
-      `Triggered by ${ctx.triggerActor} on ${ctx.isPR ? "PR" : "issue"} #${ctx.entityNumber}`
+      `[${isAgentMode ? "Agent" : "Tag"} mode] Triggered on ${ctx.isPR ? "PR" : "issue"} #${ctx.entityNumber}`
     );
 
     // ─── Phase 2: Authentication & Permissions ───
@@ -130,12 +135,9 @@ async function run(): Promise<void> {
       ctx.triggerCommentId
     );
 
-    const { systemPromptAppend, userPrompt } = createPrompt(
-      ctx,
-      data,
-      triggerPhrase,
-      customSystemPrompt
-    );
+    const { systemPromptAppend, userPrompt } = isAgentMode
+      ? createAgentPrompt(ctx, data, directPrompt, customSystemPrompt)
+      : createPrompt(ctx, data, triggerPhrase, customSystemPrompt);
 
     // ─── Phase 4: Configure MCP Servers ───
     core.info("Phase 4: Configuring MCP servers...");

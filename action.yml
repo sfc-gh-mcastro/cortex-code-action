@@ -63,6 +63,10 @@ inputs:
     description: "Base branch for new branches (defaults to repo default branch)"
     required: false
     default: ""
+  prompt:
+    description: "Direct prompt for agent mode. When provided, skips trigger detection and uses this as the instruction (e.g., for automated PR reviews)."
+    required: false
+    default: ""
 
 outputs:
   branch_name:
@@ -114,4 +118,5 @@ runs:
         INPUT_BOT_ID: ${{ inputs.bot_id }}
         INPUT_MAX_TURNS: ${{ inputs.max_turns }}
         INPUT_BASE_BRANCH: ${{ inputs.base_branch }}
+        INPUT_PROMPT: ${{ inputs.prompt }}
       run: bun run src/entrypoints/run.ts

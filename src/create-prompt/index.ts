@@ -104,6 +104,33 @@ function formatComments(comments: CommentData[]): string {
     .join("\n\n");
 }
 
+/**
+ * Create prompt for agent mode (direct prompt input, e.g., PR reviews).
+ * Uses the provided prompt as the instruction and prepends PR/issue context.
+ */
+export function createAgentPrompt(
+  ctx: GitHubContext,
+  data: PRData | IssueData,
+  directPrompt: string,
+  customSystemPrompt: string
+): PromptParts {
+  let contextSection: string;
+  if (ctx.isPR && "headBranch" in data) {
+    contextSection = formatPRContext(data, ctx);
+  } else {
+    contextSection = formatIssueContext(data as IssueData, ctx);
+  }
+
+  const userPrompt = [
+    contextSection,
+    `\n## Instructions\n${directPrompt}`,
+  ].join("\n");
+
+  const systemPromptAppend = buildSystemPromptAppend(ctx, customSystemPrompt);
+
+  return { systemPromptAppend, userPrompt };
+}
+
 function buildSystemPromptAppend(
   ctx: GitHubContext,
   customSystemPrompt: string
