@@ -186,6 +186,7 @@ async function run(): Promise<void> {
 
     const cliPath = await installCortexCLI();
 
+    const startTime = Date.now();
     const result = await runCortexCode({
       prompt: userPrompt,
       cwd: process.env.GITHUB_WORKSPACE ?? process.cwd(),
@@ -201,6 +202,10 @@ async function run(): Promise<void> {
 
     // ─── Phase 6: Post-Run Cleanup ───
     core.info("Phase 6: Cleanup and results...");
+
+    const elapsedMs = Date.now() - startTime;
+    const elapsedSec = Math.round(elapsedMs / 1000);
+    const jobUrl = `${process.env.GITHUB_SERVER_URL ?? "https://github.com"}/${owner}/${repo}/actions/runs/${process.env.GITHUB_RUN_ID}`;
 
     // Set outputs
     core.setOutput("session_id", result.sessionId);
@@ -221,14 +226,29 @@ async function run(): Promise<void> {
       const logoUrl = "https://raw.githubusercontent.com/sfc-gh-mcastro/cortex-code-action/main/assets/logo.png";
       const summaryBody = sanitizeContent(
         `## <img src="${logoUrl}" width="24" height="24" /> Cortex Code\n\n` +
+          `Cortex Code finished task in ${elapsedSec}s — [View job](${jobUrl})\n\n` +
+          `---\n\n` +
           `❌ Encountered an error.\n\n` +
           `**Session ID:** \`${result.sessionId}\`\n\n` +
-          `---\n\n` +
           (result.output
             ? `<details><summary>Output</summary>\n\n\`\`\`\n${result.output.slice(0, 60000)}\n\`\`\`\n\n</details>`
             : "_No output captured._")
       );
       await updateTrackingComment(octokit, owner, repo, commentId, summaryBody);
+    } else {
+      // Append timing footer to the agent's comment
+      try {
+        const { data: comment } = await octokit.issues.getComment({
+          owner,
+          repo,
+          comment_id: commentId,
+        });
+        const existingBody = comment.body ?? "";
+        const footer = `\n\n---\n_Cortex Code finished task in ${elapsedSec}s_ — [View job](${jobUrl})`;
+        await updateTrackingComment(octokit, owner, repo, commentId, existingBody + footer);
+      } catch {
+        // Best effort - don't fail if we can't append footer
+      }
     }
 
     // Write step summary
