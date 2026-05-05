@@ -120,18 +120,7 @@ Roadmap for feature parity with [claude-code-action](https://github.com/anthropi
 
 ---
 
-## Milestone 9: Multi-Provider Support
-
-**Goal:** Run Cortex Code through different cloud providers.
-
-- [ ] `use_bedrock` — Amazon Bedrock with OIDC authentication
-- [ ] `use_vertex` — Google Vertex AI with OIDC authentication
-- [ ] Cross-region inference configuration
-- [ ] Provider-specific model routing
-
----
-
-## Milestone 10: Session Management & Structured Output
+## Milestone 9: Session Management & Structured Output
 
 **Goal:** Advanced agent control and output capabilities.
 
@@ -143,7 +132,7 @@ Roadmap for feature parity with [claude-code-action](https://github.com/anthropi
 
 ---
 
-## Milestone 11: Base Action (Standalone)
+## Milestone 10: Base Action (Standalone)
 
 **Goal:** A minimal action for running Cortex Code without GitHub PR/issue orchestration.
 
@@ -155,7 +144,7 @@ Roadmap for feature parity with [claude-code-action](https://github.com/anthropi
 
 ---
 
-## Milestone 12: Testing & Reliability
+## Milestone 11: Testing & Reliability
 
 **Goal:** Production-grade testing and reliability guarantees.
 
