@@ -1,0 +1,265 @@
+/**
+ * Main entry point for cortex-code-action.
+ *
+ * Orchestration phases:
+ * 1. Parse GitHub context and validate trigger
+ * 2. Set up authentication and permissions
+ * 3. Fetch PR/issue data and construct prompt
+ * 4. Configure MCP servers
+ * 5. Run Cortex Code via SDK
+ * 6. Post-run cleanup and comment updates
+ */
+import * as core from "@actions/core";
+import * as github from "@actions/github";
+import {
+  parseGitHubContext,
+  containsTrigger,
+  isHumanActor,
+  createOctokit,
+  getGitHubToken,
+  checkWritePermissions,
+  createTrackingComment,
+  updateTrackingComment,
+} from "../github";
+import { fetchPRData, fetchIssueData, filterCommentsByTime } from "../github/data";
+import { createPrompt } from "../create-prompt";
+import {
+  setupSnowflakeConnection,
+  cleanupConnection,
+  installCortexCLI,
+  runCortexCode,
+} from "../cortex";
+import { prepareMcpConfig } from "../mcp/install-mcp";
+import { generateBranchName } from "../utils";
+import { sanitizeContent } from "../utils/sanitize";
+
+async function run(): Promise<void> {
+  let commentId: number | null = null;
+  let octokit: ReturnType<typeof createOctokit> | null = null;
+  let owner = "";
+  let repo = "";
+
+  try {
+    // ─── Phase 1: Parse Context & Validate ───
+    core.info("Phase 1: Parsing GitHub context...");
+
+    const ctx = parseGitHubContext();
+    owner = ctx.owner;
+    repo = ctx.repo;
+
+    const triggerPhrase = process.env.INPUT_TRIGGER_PHRASE ?? "@cortex-code";
+    const model = process.env.INPUT_MODEL ?? "auto";
+    const branchPrefix = process.env.INPUT_BRANCH_PREFIX ?? "cortex-code/";
+    const botName = process.env.INPUT_BOT_NAME ?? "cortex-code[bot]";
+    const maxTurnsStr = process.env.INPUT_MAX_TURNS ?? "";
+    const maxTurns = maxTurnsStr ? parseInt(maxTurnsStr, 10) : undefined;
+    const customSystemPrompt = process.env.INPUT_SYSTEM_PROMPT ?? "";
+    const allowedToolsStr = process.env.INPUT_ALLOWED_TOOLS ?? "";
+    const disallowedToolsStr = process.env.INPUT_DISALLOWED_TOOLS ?? "";
+
+    // Validate trigger
+    if (!containsTrigger(ctx.triggerCommentBody, triggerPhrase)) {
+      core.info(
+        `Trigger phrase "${triggerPhrase}" not found in comment. Skipping.`
+      );
+      return;
+    }
+
+    // Validate actor
+    if (!isHumanActor(ctx.triggerActor)) {
+      core.info(`Actor ${ctx.triggerActor} is a bot. Skipping.`);
+      return;
+    }
+
+    core.info(
+      `Triggered by ${ctx.triggerActor} on ${ctx.isPR ? "PR" : "issue"} #${ctx.entityNumber}`
+    );
+
+    // ─── Phase 2: Authentication & Permissions ───
+    core.info("Phase 2: Setting up authentication...");
+
+    const githubToken = getGitHubToken();
+    octokit = createOctokit(githubToken);
+
+    const hasPermission = await checkWritePermissions(
+      octokit,
+      owner,
+      repo,
+      ctx.triggerActor
+    );
+    if (!hasPermission) {
+      core.warning(
+        `User ${ctx.triggerActor} does not have write permissions. Skipping.`
+      );
+      return;
+    }
+
+    // Create tracking comment
+    commentId = await createTrackingComment(
+      octokit,
+      owner,
+      repo,
+      ctx.entityNumber,
+      botName
+    );
+    core.info(`Created tracking comment: ${commentId}`);
+
+    // Set up Snowflake connection
+    const connectionName = setupSnowflakeConnection({
+      account: process.env.SNOWFLAKE_ACCOUNT!,
+      user: process.env.SNOWFLAKE_USER!,
+      privateKey: process.env.SNOWFLAKE_PRIVATE_KEY,
+      apiKey: process.env.SNOWFLAKE_API_KEY,
+    });
+
+    // ─── Phase 3: Fetch Data & Construct Prompt ───
+    core.info("Phase 3: Fetching data and constructing prompt...");
+
+    let data;
+    if (ctx.isPR) {
+      data = await fetchPRData(githubToken, owner, repo, ctx.entityNumber);
+    } else {
+      data = await fetchIssueData(githubToken, owner, repo, ctx.entityNumber);
+    }
+
+    // Filter comments by trigger time (TOCTOU protection)
+    const triggerTime = new Date().toISOString();
+    data.comments = filterCommentsByTime(
+      data.comments,
+      triggerTime,
+      ctx.triggerCommentId
+    );
+
+    const { systemPromptAppend, userPrompt } = createPrompt(
+      ctx,
+      data,
+      triggerPhrase,
+      customSystemPrompt
+    );
+
+    // ─── Phase 4: Configure MCP Servers ───
+    core.info("Phase 4: Configuring MCP servers...");
+
+    const actionPath = process.env.GITHUB_ACTION_PATH ?? __dirname + "/../..";
+    const headSha = ctx.isPR
+      ? (ctx.payload.pull_request?.head?.sha ?? undefined)
+      : undefined;
+
+    const mcpServers = prepareMcpConfig({
+      githubToken,
+      owner,
+      repo,
+      commentId,
+      headSha,
+      isPR: ctx.isPR,
+      actionPath,
+    });
+
+    // Build allowed tools list
+    const baseTools = [
+      "Read",
+      "Write",
+      "Edit",
+      "Bash",
+      "Glob",
+      "Grep",
+      "mcp__github_comment__update_cortex_comment",
+    ];
+    if (ctx.isPR && headSha) {
+      baseTools.push(
+        "mcp__github_ci__get_ci_status",
+        "mcp__github_ci__get_workflow_run_details"
+      );
+    }
+    const userTools = allowedToolsStr
+      ? allowedToolsStr.split(",").map((t) => t.trim())
+      : [];
+    const allowedTools = [...baseTools, ...userTools];
+    const disallowedTools = disallowedToolsStr
+      ? disallowedToolsStr.split(",").map((t) => t.trim())
+      : [];
+
+    // ─── Phase 5: Install & Run Cortex Code ───
+    core.info("Phase 5: Running Cortex Code...");
+
+    const cliPath = await installCortexCLI();
+
+    const result = await runCortexCode({
+      prompt: userPrompt,
+      cwd: process.env.GITHUB_WORKSPACE ?? process.cwd(),
+      connection: connectionName,
+      model,
+      allowedTools,
+      disallowedTools,
+      systemPromptAppend,
+      maxTurns,
+      mcpServers,
+      cliPath,
+    });
+
+    // ─── Phase 6: Post-Run Cleanup ───
+    core.info("Phase 6: Cleanup and results...");
+
+    // Set outputs
+    core.setOutput("session_id", result.sessionId);
+    core.setOutput("conclusion", result.success ? "success" : "failure");
+
+    // Generate branch name for output
+    const branchName = generateBranchName({
+      prefix: branchPrefix,
+      entityType: ctx.isPR ? "pr" : "issue",
+      entityNumber: ctx.entityNumber,
+    });
+    core.setOutput("branch_name", branchName);
+
+    // Update tracking comment with result
+    const statusEmoji = result.success ? "✅" : "❌";
+    const statusText = result.success ? "completed successfully" : "encountered an error";
+    const summaryBody = sanitizeContent(
+      `${statusEmoji} **${botName}** ${statusText}.\n\n` +
+        `**Session ID:** \`${result.sessionId}\`\n\n` +
+        `---\n\n` +
+        (result.output
+          ? `<details><summary>Output</summary>\n\n\`\`\`\n${result.output.slice(0, 60000)}\n\`\`\`\n\n</details>`
+          : "_No output captured._")
+    );
+
+    await updateTrackingComment(octokit, owner, repo, commentId, summaryBody);
+
+    // Write step summary
+    await core.summary
+      .addHeading("Cortex Code Action Results")
+      .addRaw(`**Status:** ${statusText}\n\n`)
+      .addRaw(`**Session ID:** \`${result.sessionId}\`\n\n`)
+      .addRaw(
+        `**Triggered by:** @${ctx.triggerActor} on ${ctx.isPR ? "PR" : "issue"} #${ctx.entityNumber}\n\n`
+      )
+      .write();
+
+    if (!result.success) {
+      core.setFailed(`Cortex Code Action failed: ${result.error}`);
+    }
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    core.setFailed(`cortex-code-action failed: ${errMsg}`);
+
+    // Attempt to update tracking comment with error
+    if (octokit && commentId) {
+      try {
+        await updateTrackingComment(
+          octokit,
+          owner,
+          repo,
+          commentId,
+          `❌ **cortex-code[bot]** encountered a fatal error:\n\n\`\`\`\n${sanitizeContent(errMsg)}\n\`\`\``
+        );
+      } catch {
+        // Best effort
+      }
+    }
+  } finally {
+    cleanupConnection();
+  }
+}
+
+run();
