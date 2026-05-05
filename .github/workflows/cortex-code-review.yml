@@ -22,7 +22,7 @@ jobs:
           snowflake_user: ${{ secrets.SNOWFLAKE_USER }}
           snowflake_private_key: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
           model: "auto"
-          max_turns: "3"
+          max_turns: "10"
           prompt: |
             Review this PR for code quality, correctness, security vulnerabilities,
             and adherence to the project's coding conventions. Focus on:

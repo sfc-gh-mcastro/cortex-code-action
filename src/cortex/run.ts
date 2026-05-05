@@ -69,6 +69,11 @@ export async function runCortexCode(
       queryOptions.cliPath = cliPath;
     }
 
+    // Log stderr from the CLI for debugging
+    queryOptions.stderr = (line: string) => {
+      core.debug(`[cortex stderr] ${line}`);
+    };
+
     core.info("Starting Cortex Code agent...");
 
     for await (const message of query({
@@ -84,11 +89,27 @@ export async function runCortexCode(
             core.info(`Tool: ${block.name}`);
           }
         }
+      } else if (message.type === "user") {
+        // Tool results - log errors for debugging
+        const content = (message as any).message?.content;
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block.type === "tool_result" && block.is_error) {
+              core.warning(`Tool error: ${block.content}`);
+            }
+          }
+        }
       } else if (message.type === "result") {
         sessionId = (message as any).session_id ?? "";
         if ((message as any).is_error) {
           success = false;
-          output += `\nError: ${(message as any).result ?? "Unknown error"}`;
+          const errors = (message as any).errors;
+          const result = (message as any).result;
+          const errorDetail = errors
+            ? (Array.isArray(errors) ? errors.join("; ") : String(errors))
+            : result ?? "Unknown error";
+          output += `\nError: ${errorDetail}`;
+          core.error(`Agent error: ${errorDetail}`);
         }
         core.info(`Agent finished: ${(message as any).subtype}`);
       }
