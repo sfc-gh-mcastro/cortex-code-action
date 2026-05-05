@@ -219,7 +219,8 @@ async function run(): Promise<void> {
     // We only overwrite if the agent failed or didn't produce output.
     if (!result.success) {
       const summaryBody = sanitizeContent(
-        `❌ **${botName}** encountered an error.\n\n` +
+        `## <img src="https://www.snowflake.com/wp-content/themes/flavor/assets/img/favicons/favicon-32x32.png" width="20" height="20" /> Cortex Code\n\n` +
+          `❌ Encountered an error.\n\n` +
           `**Session ID:** \`${result.sessionId}\`\n\n` +
           `---\n\n` +
           (result.output

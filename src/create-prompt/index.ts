@@ -148,8 +148,10 @@ function buildSystemPromptAppend(
   );
   parts.push(
     `You have a tracking comment on the PR/issue that you MUST update with your results using the update_cortex_comment tool. ` +
-    `Write well-formatted markdown with clear sections, headers, and structure. ` +
-    `For code reviews, format your findings with a summary section, then detailed findings with file references. ` +
+    `Always start the comment body with this exact header:\n` +
+    `## <img src="https://www.snowflake.com/wp-content/themes/flavor/assets/img/favicons/favicon-32x32.png" width="20" height="20" /> Cortex Code\n\n` +
+    `Then write well-formatted markdown with clear sections, headers, and structure. ` +
+    `For code reviews, include a brief summary, then detailed findings with file references. ` +
     `Use tables, bullet points, and code blocks where appropriate. ` +
     `Always call update_cortex_comment as your final action with your complete formatted findings.`
   );
