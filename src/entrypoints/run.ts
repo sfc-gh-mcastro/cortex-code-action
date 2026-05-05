@@ -218,8 +218,9 @@ async function run(): Promise<void> {
     // The agent is instructed to call update_cortex_comment with formatted results.
     // We only overwrite if the agent failed or didn't produce output.
     if (!result.success) {
+      const logoUrl = "https://raw.githubusercontent.com/sfc-gh-mcastro/cortex-code-action/main/assets/logo.png";
       const summaryBody = sanitizeContent(
-        `## <img src="https://www.snowflake.com/wp-content/themes/flavor/assets/img/favicons/favicon-32x32.png" width="20" height="20" /> Cortex Code\n\n` +
+        `## <img src="${logoUrl}" width="24" height="24" /> Cortex Code\n\n` +
           `❌ Encountered an error.\n\n` +
           `**Session ID:** \`${result.sessionId}\`\n\n` +
           `---\n\n` +
