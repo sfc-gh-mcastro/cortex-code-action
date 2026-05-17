@@ -24,6 +24,8 @@ import {
   validateBranchName,
 } from "../github";
 import { fetchPRData, fetchIssueData, filterCommentsByTime } from "../github/data";
+import { downloadImages, type ImageSource } from "../github/image-downloader";
+import { replaceImageUrls } from "../github/replace-image-urls";
 import { createPrompt, createAgentPrompt } from "../create-prompt";
 import {
   setupSnowflakeConnection,
@@ -173,6 +175,52 @@ async function run(): Promise<void> {
       triggerTime,
       ctx.triggerCommentId
     );
+
+    // Download images from comments and issue/PR body
+    try {
+      const imageSources: ImageSource[] = [];
+
+      // Add main body
+      if (data.body) {
+        imageSources.push({
+          type: ctx.isPR ? "pr_body" : "issue_body",
+          id: ctx.entityNumber,
+          body: data.body,
+        });
+      }
+
+      // Add comments
+      for (const comment of data.comments) {
+        if (comment.body) {
+          imageSources.push({
+            type: "comment",
+            id: comment.id,
+            body: comment.body,
+          });
+        }
+      }
+
+      const imageUrlMap = await downloadImages(
+        octokit,
+        owner,
+        repo,
+        imageSources
+      );
+
+      // Replace image URLs with local paths in data
+      if (imageUrlMap.size > 0) {
+        data.body = replaceImageUrls(data.body, imageUrlMap);
+        data.comments = data.comments.map((c) => ({
+          ...c,
+          body: replaceImageUrls(c.body, imageUrlMap),
+        }));
+        core.info(`Downloaded ${imageUrlMap.size} image(s) from comments.`);
+      }
+    } catch (err) {
+      core.warning(
+        `Image download failed (continuing without images): ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
 
     const { systemPromptAppend, userPrompt } = isAgentMode
       ? createAgentPrompt(ctx, data, directPrompt, customSystemPrompt)
