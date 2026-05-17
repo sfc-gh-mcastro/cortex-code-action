@@ -20,6 +20,8 @@ import {
   checkWritePermissions,
   createTrackingComment,
   updateTrackingComment,
+  restoreConfigFromBase,
+  validateBranchName,
 } from "../github";
 import { fetchPRData, fetchIssueData, filterCommentsByTime } from "../github/data";
 import { createPrompt, createAgentPrompt } from "../create-prompt";
@@ -116,6 +118,43 @@ async function run(): Promise<void> {
       privateKey: process.env.SNOWFLAKE_PRIVATE_KEY,
       apiKey: process.env.SNOWFLAKE_API_KEY,
     });
+
+    // ─── Phase 2.5: Restore Sensitive Config (Security) ───
+    // On PRs, config files in the checkout are attacker-controlled.
+    // Restore them from the base branch before the CLI reads them.
+    if (ctx.isPR) {
+      try {
+        let baseBranchRef: string | undefined;
+
+        // For pull_request / review / review_comment events, the base ref is in the payload
+        if (
+          ctx.eventName === "pull_request" ||
+          ctx.eventName === "pull_request_review" ||
+          ctx.eventName === "pull_request_review_comment"
+        ) {
+          baseBranchRef = ctx.payload.pull_request?.base?.ref;
+        }
+
+        // For issue_comment on a PR, fall back to INPUT_BASE_BRANCH or repo default
+        if (!baseBranchRef) {
+          baseBranchRef =
+            process.env.INPUT_BASE_BRANCH ||
+            ctx.payload.repository?.default_branch ||
+            "main";
+        }
+
+        if (baseBranchRef) {
+          validateBranchName(baseBranchRef);
+          restoreConfigFromBase(baseBranchRef);
+        }
+      } catch (error) {
+        // Don't fail the action if restore fails — log and continue.
+        // The agent will still run, just with potentially untrusted config.
+        core.warning(
+          `Failed to restore sensitive config from base branch: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
 
     // ─── Phase 3: Fetch Data & Construct Prompt ───
     core.info("Phase 3: Fetching data and constructing prompt...");
