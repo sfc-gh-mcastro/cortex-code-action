@@ -154,6 +154,7 @@ async function run(): Promise<void> {
       commentId,
       headSha,
       isPR: ctx.isPR,
+      prNumber: ctx.isPR ? ctx.entityNumber : undefined,
       actionPath,
     });
 
@@ -172,6 +173,9 @@ async function run(): Promise<void> {
         "mcp__github_ci__get_ci_status",
         "mcp__github_ci__get_workflow_run_details"
       );
+    }
+    if (ctx.isPR) {
+      baseTools.push("mcp__github_inline_comment__create_inline_comment");
     }
     const userTools = allowedToolsStr
       ? allowedToolsStr.split(",").map((t) => t.trim())

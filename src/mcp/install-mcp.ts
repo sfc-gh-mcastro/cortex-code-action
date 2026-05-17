@@ -8,13 +8,14 @@ export interface McpInstallOptions {
   commentId: number;
   headSha?: string;
   isPR: boolean;
+  prNumber?: number;
   actionPath: string;
 }
 
 export function prepareMcpConfig(
   options: McpInstallOptions
 ): Record<string, McpServerConfig> {
-  const { githubToken, owner, repo, commentId, headSha, isPR, actionPath } =
+  const { githubToken, owner, repo, commentId, headSha, isPR, prNumber, actionPath } =
     options;
 
   const servers: Record<string, McpServerConfig> = {};
@@ -44,6 +45,23 @@ export function prepareMcpConfig(
         REPO_OWNER: owner,
         REPO_NAME: repo,
         HEAD_SHA: headSha,
+      },
+    };
+  }
+
+  // Include inline comment server for PRs (allows line-level review comments)
+  if (isPR && prNumber) {
+    servers["github_inline_comment"] = {
+      command: "bun",
+      args: [
+        "run",
+        path.join(actionPath, "src/mcp/github-inline-comment-server.ts"),
+      ],
+      env: {
+        GITHUB_TOKEN: githubToken,
+        REPO_OWNER: owner,
+        REPO_NAME: repo,
+        PR_NUMBER: String(prNumber),
       },
     };
   }
