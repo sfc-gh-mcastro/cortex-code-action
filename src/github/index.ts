@@ -4,3 +4,6 @@ export { createOctokit, getGitHubToken, checkWritePermissions } from "./auth";
 export { createTrackingComment, updateTrackingComment } from "./comments";
 export { restoreConfigFromBase } from "./restore-config";
 export { validateBranchName } from "./validate-branch";
+export { downloadImages } from "./image-downloader";
+export type { ImageSource } from "./image-downloader";
+export { replaceImageUrls } from "./replace-image-urls";
