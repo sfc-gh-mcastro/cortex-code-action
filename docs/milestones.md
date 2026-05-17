@@ -12,14 +12,18 @@ Roadmap for feature parity with [claude-code-action](https://github.com/anthropi
 - [x] Cortex Code Agent SDK integration (`query()` API)
 - [x] MCP server: GitHub comment updates (`update_cortex_comment`)
 - [x] MCP server: CI status inspection (`get_ci_status`, `get_workflow_run_details`)
+- [x] MCP server: Inline PR review comments (`create_inline_comment`) — line-level code suggestions
 - [x] Snowflake key-pair and API key authentication
 - [x] Write permission validation
 - [x] Bot actor filtering
-- [x] Content sanitization (token/secret redaction)
+- [x] Content sanitization (token/secret redaction, invisible char stripping, bidi removal, markdown alt-text stripping)
 - [x] TOCTOU protection (comment time filtering)
 - [x] Tracking comment with branding, timing, and job link
 - [x] GitHub Step Summary output
 - [x] Configurable model, tools, system prompt, max turns
+- [x] Sensitive path restoration from base branch (security hardening for PR events)
+- [x] Branch name validation against shell injection
+- [x] Image download from GitHub comments (screenshots/diagrams for multimodal agent)
 
 ---
 
@@ -50,9 +54,9 @@ Roadmap for feature parity with [claude-code-action](https://github.com/anthropi
 
 **Goal:** Post review comments on specific lines of code, not just a single tracking comment.
 
-- [ ] MCP server: `github-inline-comment-server`
-- [ ] `create_inline_comment` tool with line range support
-- [ ] Code suggestion blocks (```suggestion syntax)
+- [x] MCP server: `github-inline-comment-server`
+- [x] `create_inline_comment` tool with line range support
+- [x] Code suggestion blocks (```suggestion syntax)
 - [ ] Comment buffering system (prevent probe/test comments from being posted)
 - [ ] `classify_inline_comments` input — classify buffered comments as real vs. test using AI
 - [ ] Post-step: flush buffered inline comments after classification
@@ -88,7 +92,9 @@ Roadmap for feature parity with [claude-code-action](https://github.com/anthropi
 
 **Goal:** Match claude-code-action's security posture for enterprise use.
 
-- [ ] `restoreConfigFromBase()` — restore `.cortex/` and settings from base branch on PRs (prevent attacker-controlled config in PR branches)
+- [x] `restoreConfigFromBase()` — restore `.cortex/` and settings from base branch on PRs (prevent attacker-controlled config in PR branches)
+- [x] Branch name validation against shell injection (prevents `git` flag injection, path traversal, shell metacharacters)
+- [x] Content sanitization: invisible chars, bidi overrides, markdown alt-text, token redaction
 - [ ] Subprocess isolation via bubblewrap (Linux sandboxing for untrusted users)
 - [ ] `allowed_non_write_users` input — allow non-collaborators with sandboxed execution
 - [ ] Secret scrubbing from subprocess environments
